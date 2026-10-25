@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>블로그 to 학습교재 변환기</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            background-color: #f3f4f6;
+        }
+        .paper-shadow {
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+        /* 구글 문서 스타일의 출력 영역 */
+        #output-content {
+            font-family: 'Arial', 'Noto Sans KR', sans-serif;
+            line-height: 1.6;
+            color: #333;
+        }
+        #output-content h1 { font-size: 24px; font-weight: bold; margin-bottom: 16px; color: #1a73e8; border-bottom: 2px solid #1a73e8; padding-bottom: 8px;}
+        #output-content h2 { font-size: 20px; font-weight: bold; margin-top: 24px; margin-bottom: 12px; color: #202124; }
+        #output-content h3 { font-size: 16px; font-weight: bold; margin-top: 20px; margin-bottom: 10px; color: #444; }
+        #output-content p { margin-bottom: 12px; }
+        #output-content ul, #output-content ol { margin-left: 24px; margin-bottom: 12px; }
+        #output-content li { margin-bottom: 6px; }
+        #output-content strong { color: #000; background-color: #fff9c4; padding: 0 4px; border-radius: 2px;}
+        
+        /* 로딩 스피너 애니메이션 */
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3b82f6;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* 토스트 메시지 */
+        #toast {
+            visibility: hidden;
+            min-width: 250px;
+            background-color: #333;
+            color: #fff;
+            text-align: center;
+            border-radius: 8px;
+            padding: 16px;
+            position: fixed;
+            z-index: 50;
+            left: 50%;
+            bottom: 30px;
+            transform: translateX(-50%);
+            opacity: 0;
+            transition: opacity 0.3s, bottom 0.3s;
+        }
+        #toast.show {
+            visibility: visible;
+            opacity: 1;
+            bottom: 50px;
+        }
+    </style>
+</head>
+<body class="text-gray-800">
+
+    <div class="max-w-6xl mx-auto px-4 py-8 grid grid-cols-1 lg:grid-cols-2 gap-8 h-screen">
+        
+        <!-- 왼쪽 패널: 입력 영역 -->
+        <div class="flex flex-col h-full bg-white rounded-xl paper-shadow p-6">
+            <h2 class="text-2xl font-bold mb-2 text-blue-600">블로그 내용 입력</h2>
+            <p class="text-sm text-gray-500 mb-4">네이버 블로그의 글을 복사해서 아래에 붙여넣으세요.</p>
+            
+            <textarea id="blog-input" class="w-full flex-grow p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none text-sm" placeholder="여기에 블로그 텍스트를 붙여넣으세요..."></textarea>
+            
+            <div class="mt-4 flex gap-4">
+                <button id="generate-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200 flex justify-center items-center gap-2">
+                    <span>학습 교재 생성하기</span>
+                    <div id="loading-spinner" class="loader hidden"></div>
+                </button>
+            </div>
+        </div>
+
+        <!-- 오른쪽 패널: 출력 영역 (구글 문서 스타일) -->
+        <div class="flex flex-col h-full bg-gray-50 rounded-xl border border-gray-200 p-2 overflow-hidden">
+            <div class="flex justify-between items-center bg-white p-3 border-b border-gray-200 rounded-t-lg">
+                <div class="flex items-center gap-2">
+                    <svg class="w-6 h-6 text-blue-500" fill="currentColor" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 2.5L18.5 10H13V4.5zM6 20V4h6v7h7v9H6z"/></svg>
+                    <span class="font-semibold text-gray-700">문서 미리보기</span>
+                </div>
+                <button id="copy-doc-btn" class="bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-medium py-1.5 px-4 rounded shadow-sm text-sm transition duration-150 flex items-center gap-2 hidden">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path></svg>
+                    구글 문서로 복사
+                </button>
+            </div>
+            
+            <div class="flex-grow overflow-y-auto p-4 bg-gray-100 flex justify-center">
+                <!-- A4 용지 느낌의 컨테이너 -->
+                <div class="bg-white w-full max-w-2xl min-h-full paper-shadow p-8 sm:p-12" id="paper-container">
+                    <div id="output-content" class="h-full">
+                        <div class="flex flex-col items-center justify-center h-full text-gray-400">
+                            <svg class="w-16 h-16 mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                            <p>생성된 교재가 이곳에 표시됩니다.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 토스트 알림 -->
+    <div id="toast">알림 메시지</div>
+
+    <script>
+        const generateBtn = document.getElementById('generate-btn');
+        const blogInput = document.getElementById('blog-input');
+        const outputContent = document.getElementById('output-content');
+        const copyDocBtn = document.getElementById('copy-doc-btn');
+        const loadingSpinner = document.getElementById('loading-spinner');
+        const toast = document.getElementById('toast');
+
+        // 토스트 메시지 표시 함수
+        function showToast(message) {
+            toast.textContent = message;
+            toast.className = "show";
+            setTimeout(function(){ toast.className = toast.className.replace("show", ""); }, 3000);
+        }
+
+        // 지수 백오프를 적용한 API 호출 함수 (단순화 버전)
+        async function fetchWithRetry(url, options, retries = 3, backoff = 1000) {
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const response = await fetch(url, options);
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                    return await response.json();
+                } catch (error) {
+                    if (i === retries - 1) throw error;
+                    await new Promise(resolve => setTimeout(resolve, backoff));
+                    backoff *= 2; // 지수 백오프
+                }
+            }
+        }
+
+        // Gemini API 호출하여 교재 생성
+        async function generateGuide() {
+            const text = blogInput.value.trim();
+            
+            if (!text) {
+                showToast("블로그 내용을 먼저 입력해주세요.");
+                return;
+            }
+
+            // UI 상태 변경 (로딩 중)
+            generateBtn.disabled = true;
+            generateBtn.classList.add('opacity-75', 'cursor-not-allowed');
+            loadingSpinner.classList.remove('hidden');
+            outputContent.innerHTML = `<div class="flex justify-center items-center h-full text-gray-500">교재를 생성하는 중입니다... 잠시만 기다려주세요.</div>`;
+            copyDocBtn.classList.add('hidden');
+
+            const apiKey = ""; // API 키는 환경에서 자동 주입됩니다.
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+
+            const systemPrompt = `
+당신은 최고의 교육 콘텐츠 크리에이터이자 강사입니다.
+사용자가 네이버 블로그 등에서 복사한 원문 텍스트를 제공하면, 이를 바탕으로 학생들이 쉽게 이해하고 공부할 수 있는 '구조화된 학습 교재(Study Guide)'로 변환해 주어야 합니다.
+
+[작성 지침]
+1. 결과물은 반드시 구글 문서 등에서 서식이 예쁘게 유지될 수 있도록 **순수 HTML 태그**로만 작성하세요. (마크다운 기호 \`\`\`html 등은 절대 포함하지 마세요)
+2. 다음 구조를 반드시 포함하세요:
+   - <h1>[주제에 맞는 매력적인 교재 제목]</h1>
+   - <h2>🎯 학습 목표</h2> (이 글을 통해 무엇을 배울 수 있는지 3가지 bullet point)
+   - <h2>💡 핵심 요약</h2> (본문 내용을 서론/본론/결론 또는 주요 카테고리별로 이해하기 쉽게 재구성. 중요 키워드는 <strong> 태그로 강조)
+   - <h2>📖 주요 어휘 및 개념</h2> (본문에 등장하는 어려운 단어나 핵심 개념 3~5개 설명)
+   - <h2>📝 확인 문제</h2> (학습한 내용을 점검할 수 있는 객관식 또는 단답형 문제 3개. 정답은 글 맨 마지막에 거꾸로 쓰거나 작게 표기)
+
+[HTML 스타일링 가이드]
+- 인라인 CSS는 사용하지 마세요. (앱에 미리 정의된 스타일이 적용됩니다)
+- <h1>, <h2>, <h3>, <ul>, <ol>, <li>, <p>, <strong> 태그를 적절히 활용하여 구조를 잡으세요.
+- 친절하고 격려하는 선생님의 톤(존댓말)으로 작성해주세요.
+`;
+
+            const payload = {
+                contents: [{ parts: [{ text: text }] }],
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+            };
+
+            try {
+                const result = await fetchWithRetry(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (result.candidates && result.candidates[0].content && result.candidates[0].content.parts) {
+                    let htmlContent = result.candidates[0].content.parts[0].text;
+                    // 혹시 모를 마크다운 블록 제거
+                    htmlContent = htmlContent.replace(/```html/g, '').replace(/```/g, '');
+                    
+                    outputContent.innerHTML = htmlContent;
+                    copyDocBtn.classList.remove('hidden');
+                    showToast("교재 생성이 완료되었습니다!");
+                } else {
+                    throw new Error("결과를 생성하지 못했습니다.");
+                }
+            } catch (error) {
+                console.error(error);
+                outputContent.innerHTML = `<div class="text-red-500 text-center mt-10">오류가 발생했습니다. 다시 시도해주세요.</div>`;
+                showToast("생성 중 오류가 발생했습니다.");
+            } finally {
+                // UI 상태 복구
+                generateBtn.disabled = false;
+                generateBtn.classList.remove('opacity-75', 'cursor-not-allowed');
+                loadingSpinner.classList.add('hidden');
+            }
+        }
+
+        // HTML 서식을 유지하며 클립보드에 복사 (구글 문서용)
+        async function copyToGoogleDocs() {
+            const content = outputContent.innerHTML;
+            
+            try {
+                // Clipboard API를 사용하여 HTML 포맷으로 복사 시도
+                const blobHtml = new Blob([content], { type: 'text/html' });
+                const blobText = new Blob([outputContent.innerText], { type: 'text/plain' });
+                const clipboardItem = new ClipboardItem({
+                    'text/html': blobHtml,
+                    'text/plain': blobText
+                });
+                await navigator.clipboard.write([clipboardItem]);
+                showToast("✅ 복사 완료! 구글 문서에서 [Ctrl+V]를 눌러 붙여넣으세요.");
+            } catch (err) {
+                console.warn("Clipboard API failed, fallback to execCommand", err);
+                // Fallback 방법
+                const range = document.createRange();
+                range.selectNode(outputContent);
+                window.getSelection().removeAllRanges();
+                window.getSelection().addRange(range);
+                
+                try {
+                    document.execCommand('copy');
+                    window.getSelection().removeAllRanges();
+                    showToast("✅ 복사 완료! 구글 문서에 붙여넣으세요.");
+                } catch (err) {
+                    showToast("복사에 실패했습니다. 브라우저 설정을 확인해주세요.");
+                }
+            }
+        }
+
+        // 이벤트 리스너 등록
+        generateBtn.addEventListener('click', generateGuide);
+        copyDocBtn.addEventListener('click', copyToGoogleDocs);
+
+    </script>
+</body>
+</html>
